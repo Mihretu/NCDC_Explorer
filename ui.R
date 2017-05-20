@@ -12,18 +12,7 @@ library(lubridate)
 library(xts)
 library(data.table)
 #define user API key
-options(noaakey = "<your API key here>")
-
-#ignore inactive datasets
-activeStationCutoff<-'2010-01-01'
-
-#get available datasets
-datasets<-ncdc_datasets(startdate = activeStationCutoff)$data
-datasets<-datasets[!(datasets$id %in% c('NEXRAD2','NEXRAD3')),] #NEXRAD2 and NEXRAD3 don't work
-
-#define the resolution of the data as a fraction of a daily increment
-datasets$dayMultiplier<-NA
-datasets$dayMultiplier<-c(1,1/31,1/365,NA,NA,NA,NA,24*4,24)
+options(noaakey = "<paste your API key here>")
 
 fluidPage(
   # Application title
@@ -31,15 +20,15 @@ fluidPage(
   sidebarLayout(
     # Sidebar query options
     sidebarPanel(width = 3,
-                 selectInput('datasets',label = 'Datasets',datasets$id,selected = datasets$id[1]),
-                 radioButtons('searchCriteria','search by',choices=c('designation','coordinates'),selected = 'designation',inline = TRUE),
+                 selectInput('datasets',label = 'Datasets',choices='GHCND'),
+                 radioButtons('searchCriteria','Search By',choices=c('designation','coordinates'),selected = 'designation',inline = TRUE),
                  bsTooltip(id = 'searchCriteria', title = "NCDC API rate limit = 1000, if rate limit of stations is exceeded, stations will not be shown.  Zoom in to query additional stations", 
                            placement = "right", trigger = "hover"),
                  conditionalPanel("input.searchCriteria=='designation'",
-                                  selectInput('country','country',choices='United States'),
+                                  selectInput('country','Country',choices='United States'),
                                   conditionalPanel(
                                     condition = "input.country == 'United States'",
-                                    selectInput('state','state',choices='Massachusetts')
+                                    selectInput('state','State',choices='Massachusetts')
                                   )
                  ),
                  conditionalPanel("input.searchCriteria=='coordinates'",
@@ -75,21 +64,21 @@ fluidPage(
                   tabPanel(title = 'Data',value='Data',dygraphOutput('plot')),
                   tabPanel(title='Citations',value='Citations',
                            p('Scott Chamberlain (2017). rnoaa: \'NOAA\' Weather Data from R. R package version 0.7.0.
-  https://CRAN.R-project.org/package=rnoaa'),
+                             https://CRAN.R-project.org/package=rnoaa'),
                            br(),
                            p('Winston Chang, Joe Cheng, JJ Allaire, Yihui Xie and Jonathan McPherson (2017). shiny: Web Application Framework
-  for R. R package version 1.0.3. https://CRAN.R-project.org/package=shiny'),
+                             for R. R package version 1.0.3. https://CRAN.R-project.org/package=shiny'),
                            br(),
                            p('Joe Cheng, Bhaskar Karambelkar and Yihui Xie (2017). leaflet: Create Interactive Web Maps with the JavaScript
-  \'Leaflet\' Library. R package version 1.1.0. https://CRAN.R-project.org/package=leaflet'),
+                             \'Leaflet\' Library. R package version 1.1.0. https://CRAN.R-project.org/package=leaflet'),
                            br(),
                            p('Hadley Wickham (2017). tidyverse: Easily Install and Load \'Tidyverse\' Packages. R package version 1.1.1.
-  https://CRAN.R-project.org/package=tidyverse'),
+                             https://CRAN.R-project.org/package=tidyverse'),
                            br(),
                            p('H. Wickham. ggplot2: Elegant Graphics for Data Analysis. Springer-Verlag New York, 2009.'),
                            br(),
                            p('Matt Dowle and Arun Srinivasan (2017). data.table: Extension of `data.frame`. R package version 1.10.4.
-  https://CRAN.R-project.org/package=data.table'),
+                             https://CRAN.R-project.org/package=data.table'),
                            br(),
                            p('Dan Vanderkam, JJ Allaire, Jonathan Owen, Daniel Gromer, Petr Shevtsov and Benoit Thieurmel (2017). dygraphs:
   Interface to \'Dygraphs\' Interactive Time Series Charting Library. R package version 1.1.1.4.
@@ -109,9 +98,9 @@ fluidPage(
                            br(),
                            p('Jeffrey A. Ryan and Joshua M. Ulrich (2014). xts: eXtensible Time Series. R package version 0.9-7.
   https://CRAN.R-project.org/package=xts')
-                  )
-      )
+                           )
+                           )
     )
-  )
+)
 )
 # Server

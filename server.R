@@ -1,10 +1,19 @@
 # Server
+#get available datasets
+datasets<-ncdc_datasets()$data
+datasets<-datasets[!(datasets$id %in% c('NEXRAD2','NEXRAD3')),] #NEXRAD2 and NEXRAD3 don't work
+#define the resolution of the data as a fraction of a daily increment
+datasets$dayMultiplier<-NA
+datasets$dayMultiplier<-c(1,1/31,1/365,NA,NA,NA,NA,24*4,24)
+
 countries<-ncdc_locs(locationcategoryid = 'CNTRY',limit=1000)$data
 states<-ncdc_locs(locationcategoryid = 'ST',limit=1000)$data
+
 function(input, output,session) {
   
   #initialize reactive values
   active<-reactiveValues()
+  updateSelectInput(session,'datasets',choices=datasets$id,selected='GHCND')
   updateSelectInput(session,'country',choices=countries$name,selected='United States')
   updateSelectInput(session,'state',choices=states$name,selected='Massachusetts')
   state<-reactive({input$states})
@@ -88,29 +97,36 @@ function(input, output,session) {
     }
   })
   
-  #on station select, query the available datatypes and zoom map in
+  #on station select, query the available active$datatypes and zoom map in
   observeEvent(input$stations_rows_selected,{
     selected.dt<-active$stations()[input$stations_rows_selected,]
-    datatypes<-ncdc_datatypes(datasetid = input$datasets,stationid = selected.dt$id)$data
-    updateSelectInput(session,'datatypes',choices=datatypes$id,selected=datatypes$id[1])
+    active$datatypes<-ncdc_datatypes(datasetid = input$datasets,stationid = selected.dt$id)$data
+    active$datatypes<-active$datatypes[order(active$datatypes$name),]
+    active$datatypes<-rename(active$datatypes,datatype=id)
+    updateSelectInput(session,'datatypes',choices=active$datatypes$name,selected=active$datatypes$name[1])
     
-    #update map
-    leafletProxy("map",data=selected.dt) %>%
-      fitBounds(~min(longitude,na.rm = TRUE)-.1, ~min(latitude,na.rm = TRUE)-.1,
-                ~max(longitude,na.rm = TRUE)+.1, ~max(latitude,na.rm = TRUE)+.1)
+    #update map if search criteria is designation
+    if(input$searchCriteria=='designation'){
+      leafletProxy("map",data=selected.dt) %>%
+        fitBounds(~min(longitude,na.rm = TRUE)-.1, ~min(latitude,na.rm = TRUE)-.1,
+                  ~max(longitude,na.rm = TRUE)+.1, ~max(latitude,na.rm = TRUE)+.1)
+    }
   })
   
   #on map click, select station in data table and zoom map in
   observeEvent(eventExpr = input$map_shape_click,{
     selected.dt<-active$stations()[round(active$stations()$latitude,3)==round(input$map_shape_click$lat,3) & 
                                      round(active$stations()$longitude,3)==round(input$map_shape_click$lng,3),]
-    datatypes<-ncdc_datatypes(datasetid = input$datasets,stationid = selected.dt$id,sortfield = 'id')$data
-    updateSelectInput(session,'datatypes',choices=datatypes$id,selected=datatypes$id[1])
-    #update map
-    leafletProxy("map",data=selected.dt) %>%
-      fitBounds(~min(longitude,na.rm = TRUE)-.1, ~min(latitude,na.rm = TRUE)-.1,
-                ~max(longitude,na.rm = TRUE)+.1, ~max(latitude,na.rm = TRUE)+.1)
-    
+    active$datatypes<-ncdc_datatypes(datasetid = input$datasets,stationid = selected.dt$id)$data
+    active$datatypes<-active$datatypes[order(active$datatypes$name),]
+    active$datatypes<-rename(active$datatypes,datatype=id)
+    updateSelectInput(session,'datatypes',choices=active$datatypes$name,selected=active$datatypes$name[1])
+    #update map if search criteria is designation
+    if(input$searchCriteria=='designation'){
+      leafletProxy("map",data=selected.dt) %>%
+        fitBounds(~min(longitude,na.rm = TRUE)-.1, ~min(latitude,na.rm = TRUE)-.1,
+                  ~max(longitude,na.rm = TRUE)+.1, ~max(latitude,na.rm = TRUE)+.1)
+    }
     #update data table
     data.dt<-active$stations()
     Table.dt<-data.dt
@@ -123,7 +139,7 @@ function(input, output,session) {
   })
   # query and  plot user-defined data
   observeEvent(input$queryData,{
-    
+    datatype<-active$datatypes$datatype[active$datatypes$name %in% input$datatypes]
     #calculate length of output observations and split up query accordingly (1-year and 1000 row limit to API)
     numChannels<-length(input$datatypes)
     dateDiff<-as.numeric(difftime(input$dateRange[2],input$dateRange[1]))
@@ -131,7 +147,7 @@ function(input, output,session) {
     queryRows<-numChannels*numObs
     if((queryRows>1000 | dateDiff>365) & !is.na(queryRows)){
       queries<-expand.grid(datasetid=input$datasets,startdate=as.character(seq(input$dateRange[1],input$dateRange[2],by='year')),enddate=NA,
-                           datatypeid=input$datatypes,stationid=active$stations()$id[input$stations_rows_selected],limit=1000,stringsAsFactors = FALSE)
+                           datatypeid=datatype,stationid=active$stations()$id[input$stations_rows_selected],limit=1000,stringsAsFactors = FALSE)
       queries$enddate[year(queries$startdate)!=year(input$dateRange[2])]<-
         paste(year(queries$startdate[year(queries$startdate)!=year(input$dateRange[2])]),'-12-31',sep='')
       queries$enddate[is.na(queries$enddate)]<-as.character(input$dateRange[2])
@@ -149,7 +165,7 @@ function(input, output,session) {
       active$data.dt<-bind_rows(out.ls)
       
     }else{
-      active$data.dt<-data.table(ncdc(datasetid = input$datasets,datatypeid = input$datatypes,
+      active$data.dt<-data.table(ncdc(datasetid = input$datasets,datatypeid = datatype,
                                       startdate = as.character(input$dateRange[1]),enddate=as.character(input$dateRange[2]),
                                       stationid = active$stations()$id[input$stations_rows_selected],limit=1000)$data)
     }
@@ -157,10 +173,11 @@ function(input, output,session) {
     #if data exists, plot it
     if(nrow(active$data.dt)>0){
       active$data.dt$date<-as.POSIXct(active$data.dt$date,format='%Y-%m-%dT%H:%M:%S')
-      data.xts<-as.xts.data.table(spread(active$data.dt[,c('date','value','datatype'),with=FALSE],datatype,value))
+      active$data.dt<-merge(active$data.dt,active$datatypes[,c('name','datatype')],by='datatype',all.x=TRUE,all.y=FALSE)
+      data.xts<-as.xts.data.table(spread(active$data.dt[,c('date','value','name'),with=FALSE],name,value))
       output$plot<-renderDygraph({dygraph(data.xts,
                                           main = paste(active$stations()$name[input$stations_rows_selected],' ',
-                                                       input$datatypes,sep='')) %>% dyRoller() %>%dyRangeSelector()})
+                                                       paste(input$datatypes,collapse=' ; '),sep='')) %>% dyRoller() %>%dyRangeSelector()})
       updateTabsetPanel(session = session,inputId = 'tabs',selected = 'Data')
       output$results<-renderText('query successful')
     } else {output$results<-renderText('no data found')}
