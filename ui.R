@@ -20,6 +20,7 @@ fluidPage(
   sidebarLayout(
     # Sidebar query options
     sidebarPanel(width = 3,
+                 a('Documentation',href= 'https://www1.ncdc.noaa.gov/pub/data/cdo/documentation/'),
                  selectInput('datasets',label = 'Datasets',choices='GHCND'),
                  radioButtons('searchCriteria','Search By',choices=c('designation','coordinates'),selected = 'designation',inline = TRUE),
                  bsTooltip(id = 'searchCriteria', title = "NCDC API rate limit = 1000, if rate limit of stations is exceeded, stations will not be shown.  Zoom in to query additional stations", 
